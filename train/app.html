@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jev 式打分器 · 本地推理</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#fff; --ink:#1a1d21; --muted:#6b7280; --line:#e3e6ea;
+    --accent:#2f6df6; --accent-soft:#e9f0ff; --ok:#12805c; --warn:#b45309; --bad:#c0392b;
+    --bar:#eef1f6;
+  }
+  *{box-sizing:border-box}
+  html{color-scheme:light}
+  body{margin:0; background:var(--bg); color:var(--ink);
+       font:17px/1.7 -apple-system,"PingFang SC","Helvetica Neue",Arial,sans-serif;}
+  header{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+         padding:18px 26px; border-bottom:1px solid var(--line); background:var(--card);}
+  header h1{font-size:21px; margin:0; letter-spacing:.3px}
+  .meta{color:var(--muted); font-size:14px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .wrap{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px;
+        padding:22px 26px; align-items:start; max-width:1400px; margin:0 auto}
+  @media (max-width:1000px){ .wrap{grid-template-columns:1fr} }
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px 22px}
+  label{display:block; font-weight:600; font-size:15px; margin:0 0 8px; letter-spacing:.2px}
+  .hint{color:var(--muted); font-weight:400; font-size:13.5px}
+  textarea,select{width:100%; background:#fff; color:var(--ink); border:1px solid var(--line);
+    border-radius:10px; padding:11px 13px; font:16px/1.75 inherit; resize:vertical}
+  textarea:focus,select:focus{outline:3px solid var(--accent-soft); border-color:var(--accent)}
+  select{font-size:16px; padding:10px 12px}
+  .row{display:flex; gap:12px; align-items:center; flex-wrap:wrap}
+  .field{margin-bottom:18px}
+  button{font:inherit; font-size:16px; font-weight:600; padding:11px 20px; border-radius:10px;
+         border:1px solid var(--line); background:#fff; color:var(--ink); cursor:pointer}
+  button.primary{background:var(--accent); border-color:var(--accent); color:#fff}
+  button:disabled{opacity:.5; cursor:default}
+  .badge{display:inline-block; padding:3px 12px; border-radius:999px; font-size:14px; font-weight:600;
+         background:var(--accent-soft); color:var(--accent)}
+  .answer{font-size:28px; font-weight:700; margin:14px 0 6px; line-height:1.35}
+  .conf{font-size:15px; color:var(--muted)}
+  .bars{margin-top:18px}
+  .bar{position:relative; border:1px solid var(--line); border-radius:10px;
+       padding:12px 14px; margin-bottom:9px; overflow:hidden}
+  .bar .fill{position:absolute; inset:0 auto 0 0; background:var(--bar); z-index:0}
+  .bar.top .fill{background:var(--accent-soft)}
+  .bar.top{border-color:var(--accent)}
+  .bar > .txt{position:relative; z-index:1; display:flex; gap:14px; align-items:baseline}
+  .bar .lbl{flex:1; min-width:0; font-size:17px}
+  .bar .d{display:block; color:var(--muted); font-size:14px}
+  .bar .pct{font-variant-numeric:tabular-nums; font-weight:700; font-size:18px}
+  .bar .lg{color:var(--muted); font-size:13.5px; font-variant-numeric:tabular-nums;
+           width:58px; text-align:right; font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .kv{display:flex; flex-wrap:wrap; gap:6px 18px; color:var(--muted); font-size:13.5px; margin-top:16px;
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .warn{color:var(--warn)}
+  .empty{color:var(--muted); padding:36px 0; text-align:center; font-size:16px}
+  #err{color:var(--bad); font-size:15px; margin-top:12px; white-space:pre-wrap}
+</style>
+</head>
+<body>
+<header>
+  <h1>Jev 式打分器 · 本地推理</h1>
+  <span class="meta" id="info">加载模型信息…</span>
+</header>
+
+<div class="wrap">
+  <!-- ----------------------------------------------------------- 输入 -->
+  <div class="card">
+    <div class="field">
+      <label>题型 <span class="hint">自动：2 个选项当判断题，3 个以上当选择题</span></label>
+      <div class="row">
+        <select id="mode" style="flex:1">
+          <option value="auto">自动（按选项个数判断）</option>
+          <option value="choice">选择题 / 二选一判断</option>
+          <option value="score">打分题（选项当有序档位）</option>
+          <option value="noul">纯陈述判断 ⚠ 判断头不可靠</option>
+        </select>
+        <span class="badge" id="route">—</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>题目 <span class="hint">选「纯陈述判断」时这里填一句陈述句</span></label>
+      <textarea id="q" rows="2" placeholder="今天中午吃什么？"></textarea>
+    </div>
+
+    <div class="field" id="optField">
+      <label>选项 <span class="hint">一行一个；想带说明写「选项：说明」。打分题按从低到高写档位</span></label>
+      <textarea id="opts" rows="6" placeholder="兰州拉面&#10;麻辣烫&#10;便利店便当"></textarea>
+    </div>
+
+    <div class="row">
+      <button class="primary" id="go">开始推理 <span class="hint" style="color:#fff;opacity:.85">⌘↵</span></button>
+      <button id="demo">填个例子</button>
+      <button id="clear">清空</button>
+    </div>
+    <div id="err"></div>
+  </div>
+
+  <!-- ----------------------------------------------------------- 输出 -->
+  <div class="card" id="out">
+    <div class="empty">填好左边，点「开始推理」</div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+
+// ---------------------------------------------------------------- 输入解析
+function parseOpts(){
+  return $('#opts').value.split('\n').map(s => s.trim()).filter(Boolean).map(line => {
+    const i = line.search(/[：:]/);
+    if (i > 0) return { t: line.slice(0, i).trim(), d: line.slice(i + 1).trim() };
+    return { t: line, d: '' };
+  });
+}
+function route(){
+  const m = $('#mode').value, n = parseOpts().length;
+  if (m === 'noul') return '纯陈述判断';
+  if (m === 'score') return `打分题 · ${n} 档`;
+  if (n === 0) return '无选项 → 纯陈述判断';
+  if (n === 2) return '判断题 · 2 选项';
+  return `选择题 · ${n} 选项`;
+}
+function sync(){
+  $('#route').textContent = route();
+  $('#optField').style.display = ($('#mode').value === 'noul') ? 'none' : '';
+}
+['#mode', '#opts'].forEach(s => $(s).addEventListener('input', sync));
+$('#mode').addEventListener('change', sync);
+
+// ---------------------------------------------------------------- 渲染
+const pct = x => (x * 100).toFixed(1) + '%';
+const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function render(r){
+  const top = r.pred, lvlName = r.task === 'score' ? '档位' : '选项';
+  let html = `<div class="row"><span class="badge">${
+      {noul:'判断头', choice:'选项打分头', score:'档位打分头'}[r.task]}</span>
+      <span class="meta">${r.device} · ${r.ms} ms</span></div>`;
+
+  html += `<div class="answer">${r.task === 'noul' ? '' : `${lvlName} ${top + 1}：`}${esc(r.items[top].label)}</div>`;
+  html += `<div class="conf">置信度 ${pct(r.conf)}${
+      r.expected_level !== undefined ? ` · 概率加权档位 ${(r.expected_level + 1).toFixed(2)} / ${r.items.length}` : ''}</div>`;
+
+  html += '<div class="bars">' + r.items.map((it, i) => `
+    <div class="bar ${i === top ? 'top' : ''}">
+      <div class="fill" style="width:${Math.max(0.6, it.p * 100).toFixed(2)}%"></div>
+      <div class="txt">
+        <span class="lbl">${esc(it.label)}${it.desc ? `<span class="d">${esc(it.desc)}</span>` : ''}</span>
+        <span class="pct">${pct(it.p)}</span>
+        <span class="lg">${it.logit >= 0 ? '+' : ''}${it.logit.toFixed(2)}</span>
+      </div>
+    </div>`).join('') + '</div>';
+
+  html += `<div class="kv"><span>序列 ${r.used_tokens} / ${r.max_len} token</span>${
+      r.truncated ? '<span class="warn">⚠ 输入被截断</span>' : ''}</div>`;
+  $('#out').innerHTML = html;
+}
+
+// ---------------------------------------------------------------- 请求
+async function run(){
+  const body = { mode: $('#mode').value, question: $('#q').value, state: '',
+                 options: $('#mode').value === 'noul' ? [] : parseOpts() };
+  $('#err').textContent = '';
+  $('#go').disabled = true;
+  $('#out').innerHTML = '<div class="empty">推理中…</div>';
+  try{
+    const res = await fetch('/api/predict', {method:'POST', headers:{'Content-Type':'application/json'},
+                                             body: JSON.stringify(body)});
+    const r = await res.json();
+    if (!res.ok || r.error) throw new Error(r.error || res.status);
+    render(r);
+  }catch(e){
+    $('#out').innerHTML = '<div class="empty">—</div>';
+    $('#err').textContent = '出错：' + e.message;
+  }finally{ $('#go').disabled = false; }
+}
+$('#go').onclick = run;
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter'){ e.preventDefault(); run(); }
+});
+$('#clear').onclick = () => { $('#q').value = ''; $('#opts').value = '';
+  $('#out').innerHTML = '<div class="empty">填好左边，点「开始推理」</div>'; sync(); };
+$('#demo').onclick = () => {
+  $('#mode').value = 'auto';
+  $('#q').value = '天气很热，又不想走远，今天中午吃什么？';
+  $('#opts').value = '楼下的兰州拉面：热汤面，走 2 分钟\n麻辣烫：重口味，排队 20 分钟\n便利店便当：拿了就走，凉的\n食堂：便宜，但今天是红烧肉';
+  sync();
+  $('#out').innerHTML = '<div class="empty">例子填好了，点「开始推理」</div>';
+};
+
+// ---------------------------------------------------------------- 模型信息
+(async () => {
+  try{
+    const m = await (await fetch('/api/info')).json();
+    $('#info').textContent = `${m.base_model} · ${m.ckpt.split('/').slice(-2).join('/')} · ${m.device}`;
+  }catch(e){ $('#info').textContent = '模型信息读取失败：' + e.message; }
+})();
+
+sync();
+</script>
+</body>
+</html>

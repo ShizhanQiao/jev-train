@@ -1,0 +1,7 @@
+torch>=2.4
+transformers>=4.44
+huggingface_hub
+tqdm
+numpy
+httpx          # 仅合成数据流水线（rlcd/）需要
+matplotlib     # 仅 plot_loss_live.py 需要

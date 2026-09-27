@@ -1,0 +1,10 @@
+.env
+.env.*
+*.key
+__pycache__/
+.DS_Store
+.venv*/
+train/runs/
+合成数据/_raw/
+*.pt
+*.safetensors
